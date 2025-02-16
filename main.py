@@ -2,7 +2,7 @@
 from collections import UserDict
 from datetime import datetime, date, timedelta
 import re
-
+import unittest
 def input_error(func: callable)-> callable:
     """Декоратор для обробки помилок."""
     def wrapper(*args, **kwargs):
@@ -46,15 +46,14 @@ class Phone(Field):
 
 class Birthday(Field):
     def __init__(self, value: str):
-        super().__init__(value)
-        self.value = value
         try:
             date_value = datetime.strptime(value, "%d.%m.%Y")
             if date_value > datetime.now():
-                raise ValueError("Invalid date format. Use DD.MM.YYYY")
-            self.value = date_value.strftime("%d.%m.%Y")
+                raise ValueError("Birthday cannot be in the future.")
+            super().__init__(date_value.strftime("%d.%m.%Y"))
         except ValueError:
             raise ValueError("Invalid date format. Use DD.MM.YYYY")
+
             
 
 
@@ -99,11 +98,8 @@ class Record:
         return str(self.birthday) if self.birthday else "Birthday: None"
     
 
-
-
     def __str__(self):
-        birthday_str = f"Birthday: {self.birthday.value}" if self.birthday else "birthday: None"
-        return f"Contact name: {self.name.value}, phones: {'; '.join(p.value for p in self.phones)} {birthday_str}"
+        return f"Contact name: {self.name.value}, phones: {'; '.join(p.value for p in self.phones)}"
 
 
 
@@ -158,9 +154,7 @@ class AddressBook(UserDict):
             return AddressBook.find_next_weekday(birthday, 0)
         return birthday
 
-
-
-    def get_upcoming_birthdays(self,  days=7)-> list:
+    def get_upcoming_birthdays(self, days=7) -> list:
         upcoming_birthdays = []
         today = date.today()
 
@@ -168,8 +162,7 @@ class AddressBook(UserDict):
             if not record.birthday:
                 continue
 
-        for user in self.data.values():
-            birthday_this_year = user["birthday"].replace(year=today.year)
+            birthday_this_year = datetime.strptime(record.birthday.value, "%d.%m.%Y").date().replace(year=today.year)
 
             if birthday_this_year < today:
                 birthday_this_year = birthday_this_year.replace(year=today.year + 1)
@@ -177,15 +170,10 @@ class AddressBook(UserDict):
             birthday_this_year = self.adjust_for_weekend(birthday_this_year)
 
             if 0 <= (birthday_this_year - today).days <= days:
-
-                if birthday_this_year.weekday() >= 5:
-                    birthday_this_year = self.find_next_weekday(birthday_this_year, 0)
-
                 congratulation_date_str = self.date_to_string(birthday_this_year)
-                upcoming_birthdays.append({"name": user["name"], "congratulation_date": congratulation_date_str})
+                upcoming_birthdays.append({"name": record.name.value, "congratulation_date": congratulation_date_str})
+
         return upcoming_birthdays
-
-
 
 
 def parse_input(user_input: str)-> tuple:
@@ -193,8 +181,6 @@ def parse_input(user_input: str)-> tuple:
     command = parts[0].lower()
     args = parts[1:]
     return command, args
-
-
 
 @input_error
 def add_contact(args: list, book: AddressBook)-> str:
@@ -313,5 +299,55 @@ def main():
 
 
 
+class TestAddressBook(unittest.TestCase):
+    def setUp(self):
+        self.book = AddressBook()
+        self.book.add_record(Record("Alice"))
+        self.book.add_record(Record("Bob"))
+
+    def test_add_contact(self):
+        result = add_contact(["Charlie", "1234567890"], self.book)
+        self.assertEqual(result, "Contact added.")
+        self.assertIsNotNone(self.book.find("Charlie"))
+
+    def test_change_phone_number(self):
+        self.book.find("Alice").add_phone("1234567890")
+        result = change_phone_number(["Alice", "1234567890", "0987654321"], self.book)
+        self.assertEqual(result, "Phone number changed successfully.")
+        self.assertEqual(self.book.find("Alice").phones[0].value, "0987654321")
+
+    def test_sow_contact_by_name(self):
+        self.book.find("Alice").add_phone("1234567890")
+        result = sow_contact_by_name(["Alice"], self.book)
+        self.assertIn("Alice", result)
+        self.assertIn("1234567890", result)
+
+    def test_add_birthday(self):
+        result = add_birthday(["Alice", "01.01.2000"], self.book)
+        self.assertEqual(result, "Birthday added successfully.")
+        self.assertEqual(self.book.find("Alice").birthday.value, "01.01.2000")
+
+    def test_show_birthday(self):
+        self.book.find("Alice").add_birthday("01.01.2000")
+        result = show_birthday(["Alice"], self.book)
+        self.assertEqual(result, "01.01.2000")
+
+    def test_show_birthdays(self):
+        self.book.find("Alice").add_birthday("01.01.2000")
+        self.assertIsInstance(show_birthdays(self.book), str)
+
+    def test_remove_phone(self):
+        self.book.find("Alice").add_phone("1234567890")
+        self.assertEqual(self.book.find("Alice").remove_phone("1234567890"), "Phone number remove")
+        self.assertEqual(len(self.book.find("Alice").phones), 0)
+
+    def test_delete_contact(self):
+        self.book.delete("Alice")
+        self.assertIsNone(self.book.find("Alice"))
+
+
+
+
 if __name__ == "__main__":
+    unittest.main()
     main()
